@@ -63,12 +63,12 @@ func RunIoMultiplexingServer() {
 	var events = make([]io_multiplexing.Event, config.MaxConnection)
 	var lastActiveExpireExecTime = time.Now()
 	for {
-		// wait for file descriptors in the monitoring list to be ready for I/O
-		// it is a blocking call.
 		if time.Now().After(lastActiveExpireExecTime.Add(constant.ActiveExpireFrequency)) {
 			core.ActiveDeleteExpiredKeys()
 			lastActiveExpireExecTime = time.Now()
 		}
+		// wait for file descriptors in the monitoring list to be ready for I/O
+		// it is a blocking call.
 		events, err = ioMultiplexer.Wait()
 		if err != nil {
 			continue
@@ -93,6 +93,7 @@ func RunIoMultiplexingServer() {
 				}
 			} else {
 				cmd, err := readCommand(events[i].Fd)
+				// log.Println("command: ", cmd)
 				if err != nil {
 					if err == io.EOF || err == syscall.ECONNRESET {
 						log.Println("client disconnected")
