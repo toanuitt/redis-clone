@@ -11,3 +11,4 @@ var ActiveExpireSampleSize = 20
 var ActiveExpireThreshold = 0.1
 var ExpireKeySuccess = []byte(":1\r\n")
 var ExpireKeyNotExist = []byte(":0\r\n")
+var DefaultBPlusTreeDegree = 4
