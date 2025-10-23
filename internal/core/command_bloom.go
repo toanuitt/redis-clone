@@ -56,7 +56,7 @@ func cmdBFEXISTS(args []string) []byte {
 	key, item := args[0], args[1]
 	bloom, exist := bloomStore[key]
 	if !exist {
-		return constant.R
+		return constant.RespZero
 	}
 	if !bloom.Exist(item) {
 		return constant.RespZero
