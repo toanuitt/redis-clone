@@ -4,13 +4,18 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"redis-clone/internal/config"
 	"redis-clone/internal/constant"
 	"redis-clone/internal/core"
 	"redis-clone/internal/core/io_multiplexing"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
+
+var serverStatus int32 = constant.ServerStatusIdle
 
 func readCommand(fd int) (*core.Command, error) {
 	var buf = make([]byte, 512)
@@ -24,7 +29,19 @@ func readCommand(fd int) (*core.Command, error) {
 	return core.ParseCmd(buf[:n])
 }
 
-func RunIoMultiplexingServer() {
+func WaitForSignal(wg *sync.WaitGroup, signals chan os.Signal) {
+	defer wg.Done()
+	<-signals
+	for {
+		if atomic.CompareAndSwapInt32(&serverStatus, constant.ServerStatusIdle, constant.ServerStatusShuttingDown) {
+			log.Println("Shutting down")
+			os.Exit(0)
+		}
+	}
+}
+
+func RunIoMultiplexingServer(wg *sync.WaitGroup) {
+	defer wg.Done()
 	log.Println("starting an I/O Multiplexing TCP server on", config.Port)
 	listener, err := net.Listen(config.Protocol, config.Port)
 	if err != nil {
@@ -62,9 +79,15 @@ func RunIoMultiplexingServer() {
 
 	var events = make([]io_multiplexing.Event, config.MaxConnection)
 	var lastActiveExpireExecTime = time.Now()
-	for {
+	for atomic.LoadInt32(&serverStatus) != constant.ServerStatusShuttingDown {
 		if time.Now().After(lastActiveExpireExecTime.Add(constant.ActiveExpireFrequency)) {
+			if !atomic.CompareAndSwapInt32(&serverStatus, constant.ServerStatusIdle, constant.ServerStatusBusy) {
+				if serverStatus == constant.ServerStatusShuttingDown {
+					return
+				}
+			}
 			core.ActiveDeleteExpiredKeys()
+			atomic.SwapInt32(&serverStatus, constant.ServerStatusIdle)
 			lastActiveExpireExecTime = time.Now()
 		}
 		// wait for file descriptors in the monitoring list to be ready for I/O
@@ -82,6 +105,13 @@ func RunIoMultiplexingServer() {
 				if err != nil {
 					log.Println("err", err)
 					continue
+				}
+				// Goroutine #2 is gracefully shutdown
+				// means: serverStatus == ServerStatusShuttingDown
+				if !atomic.CompareAndSwapInt32(&serverStatus, constant.ServerStatusIdle, constant.ServerStatusBusy) {
+					if serverStatus == constant.ServerStatusShuttingDown {
+						return
+					}
 				}
 				log.Printf("set up a new connection")
 				// ask epoll to monitor this connection
@@ -108,5 +138,6 @@ func RunIoMultiplexingServer() {
 				}
 			}
 		}
+		atomic.SwapInt32(&serverStatus, constant.ServerStatusIdle)
 	}
 }
