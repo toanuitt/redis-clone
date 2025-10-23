@@ -1,6 +1,10 @@
 package data_structure
 
-import "time"
+import (
+	"log"
+	"redis-clone/internal/config"
+	"time"
+)
 
 type Obj struct {
 	Value          interface{}
@@ -72,14 +76,42 @@ func (d *Dict) Get(key string) *Obj {
 	return v
 }
 
+func (d *Dict) evictRandom() {
+	evictCount := int64(config.EvictionRatio * float64(config.MaxKeyNumber))
+	log.Print("trigger random eviction")
+	for k := range d.dictStore {
+		d.Delete(k)
+		evictCount--
+		if evictCount == 0 {
+			break
+		}
+	}
+}
+
+func (d *Dict) evict() {
+	switch config.EvictionPolicy {
+	case "allkeys-random":
+		d.evictRandom()
+	}
+}
+
 func (d *Dict) Set(key string, obj *Obj) {
+	if len(d.dictStore) == config.MaxKeyNumber {
+		d.evict()
+	}
+	v := d.dictStore[key]
+	if v == nil {
+		HashKeySpaceStat.Key++
+	}
 	d.dictStore[key] = obj
 }
 
 func (d *Dict) Delete(key string) bool {
+	log.Printf("Delete key %s", key)
 	if _, exists := d.dictStore[key]; exists {
 		delete(d.dictStore, key)
 		delete(d.expiredDictStore, key)
+		HashKeySpaceStat.Key--
 		return true
 	}
 	return false

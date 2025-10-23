@@ -1,8 +1,11 @@
 package core
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"redis-clone/internal/constant"
+	"redis-clone/internal/data_structure"
 	"strconv"
 	"syscall"
 	"time"
@@ -128,6 +131,14 @@ func cmdExists(args []string) []byte {
 	return Encode(int64(existCount), false)
 }
 
+func cmdInfo(args []string) []byte {
+	var info []byte
+	buf := bytes.NewBuffer(info)
+	buf.WriteString("# Keyspace\r\n")
+	buf.WriteString(fmt.Sprintf("db0:keys=%d,expires=0,avg_ttl=0\r\n", data_structure.HashKeySpaceStat.Key))
+	return Encode(buf.String(), false)
+}
+
 func ExecuteAndResponse(cmd *Command, connFd int) error {
 	var res []byte
 	switch cmd.Cmd {
@@ -145,6 +156,8 @@ func ExecuteAndResponse(cmd *Command, connFd int) error {
 		res = cmdDel(cmd.Args)
 	case "EXISTS":
 		res = cmdExists(cmd.Args)
+	case "INFO":
+		res = cmdInfo(cmd.Args)
 	case "ZADD":
 		res = cmdZADD(cmd.Args)
 	case "ZSCORE":
